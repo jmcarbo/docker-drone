@@ -1,0 +1,66 @@
+version: '2'
+volumes:
+  postgres:
+  gogs:
+services:
+  gogs:
+    image: gogs/gogs
+    restart: always
+    depends_on:
+      - postgres
+    ports:
+      - '2222:22'
+      - 3000:3000
+    links:
+      - postgres
+    volumes:
+      - gogs:/data
+    environment:
+      - DOMAIN=gogs
+  postgres:
+    image: postgres:9.6-alpine
+    restart: always
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./postgres:/docker-entrypoint-initdb.d
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+  drone-server:
+    image: drone/drone:0.5
+    ports:
+      - 3010:8000
+    restart: always
+    depends_on:
+      - gogs
+      - postgres
+    links:
+      - gogs
+      - postgres
+    environment:
+      - DRONE_DEBUG=true
+      - DRONE_OPEN=true
+      - DRONE_GOGS=true
+      - DRONE_GOGS_URL=http://gogs:3000
+      - DRONE_SECRET=${DRONE_SECRET}
+      - DRONE_SERVER_ADDR=:8000
+      - DRONE_DATABASE_DRIVER=postgres
+      - DRONE_DATABASE_DATASOURCE=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/drone?sslmode=disable
+  drone-agent:
+    image: drone/drone:0.5
+    command: agent
+    restart: always
+    depends_on:
+      - drone-server
+    links:
+      - drone-server
+      - gogs
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DRONE_DEBUG=true
+      - DRONE_SERVER=ws://drone-server:8000/ws/broker
+      - DRONE_SECRET=${DRONE_SECRET}
+      - DRONE_PLUGIN_PULL=true
